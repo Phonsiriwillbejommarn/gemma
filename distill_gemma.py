@@ -147,7 +147,17 @@ def format_reasoning_example(example: Dict[str, Any], tokenizer: AutoTokenizer) 
     problem = example.get("problem", "").strip()
     if not problem:
         problem = example.get("question", "").strip()
+        
     thinking = example.get("thinking", "").strip()
+    
+    # Support for OpenR1-Math-220k which stores reasoning inside 'generations'
+    if not thinking and "generations" in example and example["generations"]:
+        gen = example["generations"][0]
+        import re
+        think_match = re.search(r"<think>(.*?)</think>", gen, flags=re.DOTALL | re.IGNORECASE)
+        if think_match:
+            thinking = think_match.group(1).strip()
+            
     solution = example.get("solution", "").strip()
 
     # Build the response with reasoning + answer
