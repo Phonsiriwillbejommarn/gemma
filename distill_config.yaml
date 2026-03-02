@@ -5,7 +5,7 @@
 
 # --- Model Settings ---
 teacher_model: "google/gemma-3-27b-it"
-student_model: "google/gemma-2-2b"
+student_model: "Phonsiri/gemma-2-2b-SFT-Reasoning-full-Model"
 
 # --- Dataset ---
 dataset_name: "open-r1/OpenR1-Math-220k"
