@@ -21,9 +21,9 @@ temperature: 2.0                       # Temperature for softening logits
 
 # --- Training Hyperparameters ---
 learning_rate: 2.0e-5
-num_train_epochs: 3
-per_device_train_batch_size: 1         # REDUCED to 1 to prevent OOM with extreme sequence lengths
-gradient_accumulation_steps: 16        # INCREASED to 16 to maintain effective batch size of 16
+num_train_epochs: 1
+per_device_train_batch_size: 2         # REDUCED to 1 to prevent OOM with extreme sequence lengths
+gradient_accumulation_steps: 8        # INCREASED to 16 to maintain effective batch size of 16
 warmup_ratio: 0.1
 weight_decay: 0.01
 max_grad_norm: 1.0
@@ -37,8 +37,8 @@ teacher_bnb_4bit_quant_type: "nf4"
 
 # --- Output & Logging ---
 output_dir: "./distill_output"
-logging_steps: 10
-save_steps: 10
+logging_steps: 1
+save_steps: 5
 save_total_limit: 5
 report_to: "wandb"                    # "wandb" or "tensorboard" or "none"
 push_to_hub: true
