@@ -213,6 +213,10 @@ def main():
         
     logger.info(f"  Raw examples: {len(dataset)}")
 
+    # Shuffle dataset
+    logger.info("Shuffling dataset...")
+    dataset = dataset.shuffle(seed=42)
+
     # Format dataset
     logger.info("Formatting dataset (problem → thinking → solution)...")
     original_columns = dataset.column_names
