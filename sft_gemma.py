@@ -70,6 +70,8 @@ def format_reasoning_example(example: Dict[str, Any], tokenizer: AutoTokenizer) 
     Dataset columns: id, problem, thinking, solution, difficulty, category, timestamp, hash
     """
     problem = example.get("problem", "").strip()
+    if not problem:
+        problem = example.get("question", "").strip()
     thinking = example.get("thinking", "").strip()
     solution = example.get("solution", "").strip()
 
@@ -195,8 +197,20 @@ def main():
     tokenizer.padding_side = "right"
 
     # --- Load dataset ---
-    logger.info(f"Loading dataset: {config['dataset_name']}")
-    dataset = load_dataset(config["dataset_name"], split="train")
+    dataset_name = config["dataset_name"]
+    logger.info(f"Loading dataset: {dataset_name}")
+    
+    if isinstance(dataset_name, str) and (dataset_name.endswith(".json") or dataset_name.endswith(".jsonl")):
+        if "," in dataset_name:
+            data_files = [f.strip() for f in dataset_name.split(",") if f.strip()]
+            dataset = load_dataset("json", data_files=data_files, split="train")
+        else:
+            dataset = load_dataset("json", data_files=dataset_name, split="train")
+    elif isinstance(dataset_name, list):
+        dataset = load_dataset("json", data_files=dataset_name, split="train")
+    else:
+        dataset = load_dataset(dataset_name, split="train")
+        
     logger.info(f"  Raw examples: {len(dataset)}")
 
     # Format dataset
