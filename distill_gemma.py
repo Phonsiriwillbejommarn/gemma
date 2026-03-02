@@ -354,7 +354,8 @@ class DistillationTrainer(Trainer):
             teacher_flat = teacher_logits_trimmed.view(-1, min_vocab)
 
         # Process in chunks to prevent OOM on massive batch/seq lengths
-        chunk_size = 512
+        # REDUCED chunk size specifically to handle extreme sequence lengths (>8192)
+        chunk_size = 64
         total_tokens = student_flat.size(0)
         distill_loss_sum = 0.0
 
