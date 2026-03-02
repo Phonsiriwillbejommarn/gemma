@@ -11,7 +11,7 @@ student_model: "Phonsiri/gemma-2-2b-SFT-Reasoning-full-Model"
 dataset_name: "open-r1/OpenR1-Math-220k"
 max_samples: 20000                     # Randomly sample to avoid extremely long epochs
 dataset_text_field: "text"             # Field name for text (used after formatting)
-max_seq_length: 12288                  # Increased to maximum practical sequence length for reasoning
+max_seq_length: 8192                   # Reverted to 8192 to match Gemma-2 maximum context length
 
 # --- Distillation Hyperparameters ---
 alpha: 0.5                             # Weight for distillation loss (KL-div)
