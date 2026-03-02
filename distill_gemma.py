@@ -139,70 +139,35 @@ def load_config(config_path: Optional[str] = None, cli_overrides: Optional[Dict]
 # ──────────────────────────────────────────────────────────────
 # Dataset
 # ──────────────────────────────────────────────────────────────
-def format_alpaca(example: Dict[str, Any]) -> Dict[str, str]:
-    """Format Alpaca dataset into instruction-following format."""
-    if example.get("input", "").strip():
-        text = (
-            f"### Instruction:\n{example['instruction']}\n\n"
-            f"### Input:\n{example['input']}\n\n"
-            f"### Response:\n{example['output']}"
-        )
-    else:
-        text = (
-            f"### Instruction:\n{example['instruction']}\n\n"
-            f"### Response:\n{example['output']}"
-        )
-    return {"text": text}
-
-
-def format_math(example: Dict[str, Any]) -> Dict[str, str]:
+def format_reasoning_example(example: Dict[str, Any], tokenizer: AutoTokenizer) -> Dict[str, str]:
     """
-    Format rasbt/math_full_minus_math500 dataset.
-    Columns: problem, level, type, solution, answer, unique_id
-
-    Output: Qwen ChatML format with problem → solution.
+    Format math/reasoning dataset into chat-style training text.
     """
     problem = example.get("problem", "").strip()
+    if not problem:
+        problem = example.get("question", "").strip()
+    thinking = example.get("thinking", "").strip()
     solution = example.get("solution", "").strip()
-    answer = example.get("answer", "").strip()
 
-    # Build response: solution with final answer
-    response = solution
-    if answer and answer not in solution:
-        response += f"\n\nThe answer is $\\boxed{{{answer}}}$."
+    # Build the response with reasoning + answer
+    response_parts = []
+    if thinking:
+        response_parts.append(f"<reasoning>\n{thinking}\n</reasoning>")
+    if solution:
+        response_parts.append(f"<answer>\n{solution}\n</answer>")
 
-    # Gemma chat format
-    text = (
-        f"<start_of_turn>user\n{problem}<end_of_turn>\n"
-        f"<start_of_turn>model\n{response}<end_of_turn>"
-    )
+    response = "\n\n".join(response_parts) if response_parts else f"<answer>\n{solution}\n</answer>"
 
+    messages = [
+        {"role": "user", "content": problem},
+        {"role": "model", "content": response}
+    ]
+
+    try:
+        text = tokenizer.apply_chat_template(messages, tokenize=False)
+    except ValueError:
+        text = ""
     return {"text": text}
-
-
-def format_prompt_completion(example: Dict[str, Any]) -> Dict[str, str]:
-    """Format prompt/completion datasets (e.g., CodeAlpaca) into ChatML."""
-    text = (
-        f"<start_of_turn>user\n{example.get('prompt', '').strip()}<end_of_turn>\n"
-        f"<start_of_turn>model\n{example.get('completion', '').strip()}<end_of_turn>"
-    )
-    return {"text": text}
-
-
-def format_messages(example: Dict[str, Any]) -> Dict[str, str]:
-    """Format standard conversational messages (e.g., Aurora-Alpha) into ChatML."""
-    messages = example.get("messages", [])
-    
-    text = ""
-    for msg in messages:
-        role = msg.get("role", "")
-        if role == "system":
-            continue
-        if role == "assistant":
-            role = "model"
-        content = msg.get("content", "").strip()
-        text += f"<start_of_turn>{role}\n{content}<end_of_turn>\n"
-    return {"text": text.strip()}
 
 
 def prepare_dataset(config: DistillConfig, tokenizer: AutoTokenizer):
@@ -210,41 +175,36 @@ def prepare_dataset(config: DistillConfig, tokenizer: AutoTokenizer):
     dataset_names = [d.strip() for d in config.dataset_name.split(",")]
     all_datasets = []
 
-    for name in dataset_names:
-        logger.info(f"Loading dataset: {name}")
-        if os.path.isfile(name) or os.path.isdir(name):
-            if name.endswith(".jsonl"):
-                ds = load_dataset("json", data_files=name, split="train")
+    for path in dataset_names:
+        try:
+            if path.endswith(".json") or path.endswith(".jsonl"):
+                logger.info(f"Loading local JSON dataset: {path}")
+                ds = load_dataset("json", data_files=path, split="train")
             else:
-                ds = load_dataset(name, split="train")
-        else:
-            ds = load_dataset(name, split="train")
+                logger.info(f"Loading HuggingFace dataset: {path}")
+                ds = load_dataset(path, split="train")
+            all_datasets.append(ds)
+        except Exception as e:
+            logger.error(f"Failed to load dataset '{path}': {e}")
+            raise e
 
-        # Auto-detect format and apply formatting
-        if "messages" in ds.column_names:
-            logger.info(f"[{name}] Detected Messages format → formatting as ChatML...")
-            ds = ds.map(format_messages, remove_columns=ds.column_names)
-        elif "problem" in ds.column_names and "solution" in ds.column_names:
-            logger.info(f"[{name}] Detected MATH format → formatting as ChatML...")
-            ds = ds.map(format_math, remove_columns=ds.column_names)
-        elif "prompt" in ds.column_names and "completion" in ds.column_names:
-            logger.info(f"[{name}] Detected Prompt/Completion format → formatting as ChatML...")
-            ds = ds.map(format_prompt_completion, remove_columns=ds.column_names)
-        elif "instruction" in ds.column_names:
-            logger.info(f"[{name}] Detected Alpaca format → formatting as ChatML...")
-            ds = ds.map(format_alpaca, remove_columns=ds.column_names)
-        elif config.dataset_text_field in ds.column_names:
-            logger.info(f"[{name}] Using existing text column: {config.dataset_text_field}")
-        else:
-            logger.warning(f"[{name}] Unknown format with columns: {ds.column_names}. Hoping for best!")
-
-        all_datasets.append(ds)
+    if not all_datasets:
+        raise ValueError("No datasets could be loaded.")
 
     if len(all_datasets) > 1:
         logger.info(f"Concatenating {len(all_datasets)} datasets...")
-        dataset = concatenate_datasets(all_datasets)
+        
+        formatted_datasets = []
+        for ds in all_datasets:
+            original_columns = ds.column_names
+            formatted_ds = ds.map(lambda x: format_reasoning_example(x, tokenizer), remove_columns=original_columns)
+            formatted_datasets.append(formatted_ds)
+            
+        dataset = concatenate_datasets(formatted_datasets)
     else:
         dataset = all_datasets[0]
+        original_columns = dataset.column_names
+        dataset = dataset.map(lambda x: format_reasoning_example(x, tokenizer), remove_columns=original_columns)
 
     logger.info("Shuffling the final dataset...")
     dataset = dataset.shuffle(seed=42)
@@ -374,10 +334,10 @@ class DistillationTrainer(Trainer):
         student_logits_trimmed = student_logits[..., :min_vocab]
         teacher_logits_trimmed = teacher_logits[..., :min_vocab]
 
-        # --- KL Divergence on softened distributions (memory efficient) ---
+        # --- Cross-Entropy KD Loss (auto-handles vocab mismatch via soft labels) ---
         T = self.temperature
 
-        # Filter to only non-padding tokens BEFORE computing KL (saves ~19GB VRAM)
+        # Filter to only non-padding tokens BEFORE computing loss (saves ~19GB VRAM)
         labels = inputs.get("labels", None)
         if labels is not None:
             mask = (labels != -100)  # (B, seq_len)
@@ -388,37 +348,35 @@ class DistillationTrainer(Trainer):
             student_flat = student_logits_trimmed.view(-1, min_vocab)
             teacher_flat = teacher_logits_trimmed.view(-1, min_vocab)
 
-        # Process in chunks to prevent OOM on massive batch/seq lengths (e.g. 4x8192)
+        # Process in chunks to prevent OOM on massive batch/seq lengths
         chunk_size = 512
         total_tokens = student_flat.size(0)
-        kl_loss_sum = 0.0
+        distill_loss_sum = 0.0
 
         for i in range(0, total_tokens, chunk_size):
             s_chunk = student_flat[i : i + chunk_size]
             t_chunk = teacher_flat[i : i + chunk_size]
 
-            s_log_probs = F.log_softmax(s_chunk / T, dim=-1)
-            t_probs = F.softmax(t_chunk / T, dim=-1)
+            # Cross-Entropy pseudo-code for KD: F.cross_entropy(student_logits, soft_labels)
+            # We scale logits by T to match standard temp softening
+            soft_labels = F.softmax(t_chunk / T, dim=-1)
+            chunk_distill = F.cross_entropy(s_chunk / T, soft_labels, reduction="sum")
+            distill_loss_sum += chunk_distill
 
-            # reduction="batchmean" divides by batch size (which is chunk size here)
-            # We use "sum" and divide by total_tokens later to get exact mathematical equivalence
-            chunk_kl = F.kl_div(s_log_probs, t_probs, reduction="sum")
-            kl_loss_sum += chunk_kl
-
-        kl_loss = kl_loss_sum / max(total_tokens, 1)
+        distill_loss = distill_loss_sum / max(total_tokens, 1)
 
         # Scale by T^2 (standard distillation scaling)
-        kl_loss = kl_loss * (T ** 2)
+        distill_loss = distill_loss * (T ** 2)
 
         # --- Combined loss ---
-        loss = self.alpha * kl_loss + (1 - self.alpha) * ce_loss
+        loss = self.alpha * distill_loss + (1 - self.alpha) * ce_loss
 
         # Log individual losses
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
                 f"Step {self.state.global_step}: "
                 f"total={loss.item():.4f}  "
-                f"kl={kl_loss.item():.4f}  "
+                f"kl={distill_loss.item():.4f}  "
                 f"ce={ce_loss.item():.4f}"
             )
 
@@ -485,6 +443,11 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
+    # Add fallback chat template if not present (as in SFT)
+    if tokenizer.chat_template is None:
+        tokenizer.chat_template = """{{ bos_token }}{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}<start_of_turn>user\n{{ message['content'] }}<end_of_turn>\n{% elif message['role'] == 'assistant' or message['role'] == 'model' %}<start_of_turn>model\n{{ message['content'] }}<end_of_turn>\n{% endif %}{% endfor %}{% if add_generation_prompt %}<start_of_turn>model\n{% endif %}"""
+
+    tokenizer.padding_side = "right"
     # --- Load dataset ---
     train_dataset = prepare_dataset(config, tokenizer)
 
