@@ -201,9 +201,6 @@ def main():
         max_completion_length=args.max_completion_length,
         num_generations=args.num_generations,
         temperature=0.9,
-        # vLLM specifics for fast generation
-        vllm_device="cuda:0" if torch.cuda.is_available() else "cpu",
-        vllm_gpu_memory_utilization=0.6,
         
         # GRPO specific
         beta=0.01,  # KL penalty coefficient
