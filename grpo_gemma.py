@@ -154,7 +154,7 @@ def prepare_dataset(dataset_name: str, split: str = "train"):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name_or_path", type=str, default="Phonsiri/gemma-2-2b-SFT-Reasoning-full-Model", help="Path to SFT model")
+    parser.add_argument("--model_name_or_path", type=str, default="Phonsiri/gemma-2-2b-Distillation-gemma-2-27b-it", help="Path to Starting model")
     parser.add_argument("--dataset_name", type=str, default="open-r1/OpenR1-Math-220k", help="Hugging Face dataset name or local path")
     parser.add_argument("--output_dir", type=str, default="./grpo_output", help="Where to save the model")
     parser.add_argument("--max_completion_length", type=int, default=1024, help="Increased for Reasoning")
