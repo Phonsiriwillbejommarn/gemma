@@ -1,10 +1,10 @@
 # ============================================================
 # Knowledge Distillation Configuration
-# gemma-3-27b-it (Teacher) → gemma-2-2b (Student)
+# gemma-2-27b-it (Teacher) → gemma-2-2b (Student)
 # ============================================================
 
 # --- Model Settings ---
-teacher_model: "google/gemma-3-27b-it"
+teacher_model: "google/gemma-2-27b-it"
 student_model: "Phonsiri/gemma-2-2b-SFT-Reasoning-full-Model"
 
 # --- Dataset ---
